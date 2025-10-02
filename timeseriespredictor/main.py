@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI  # , Depends
 # from timeseriespredictor.routers import predictions
 # from sqlalchemy.orm import Session
 # from timeseriespredictor import db, schemas, crud
@@ -27,11 +27,12 @@ TICKERS = {"NQ=F": "Nasdaq 100 FUT",
 #     finally:
 #         db_session.close()
 
+
 def _prediction_payload_for(ticker: str):
-    key = f"predictions/{ticker.replace('=','')}_prediction.csv"
+    key = f"predictions/{ticker.replace('=', '')}_prediction.csv"
     try:
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
-        content =obj["Body"].read().decode("utf-8")
+        content = obj["Body"].read().decode("utf-8")
         rows = list(csv.DictReader(content.splitlines()))
 
         name = TICKERS.get(ticker, ticker)
@@ -62,8 +63,9 @@ def _prediction_payload_for(ticker: str):
     except Exception as e:
         return {"ticker": ticker, "name": TICKERS.get(ticker, ticker), "error": str(e)}
 
+
 def _metrics_payload_for(ticker: str):
-    key = f"metrics/{ticker.replace("=","")}_data.csv"
+    key = f"metrics/{ticker.replace("=", "")}_data.csv"
 
     try:
         # Fetch object from S3
@@ -73,7 +75,7 @@ def _metrics_payload_for(ticker: str):
         # Parse CSV
         rows = list(csv.DictReader(content.splitlines()))
         if not rows:
-            return {"ticker": ticker, "rise_pct": None,"fall_pct": None,"f1_score": None, "message": "No data"}
+            return {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "message": "No data"}
 
         latest = rows[-1]  # last row = latest prediction
         name = TICKERS.get(ticker, ticker)
@@ -87,9 +89,9 @@ def _metrics_payload_for(ticker: str):
         }
 
     except s3.exceptions.NoSuchKey:
-        return {"ticker": ticker, "rise_pct": None,"fall_pct": None,"f1_score": None, "message": "No file in S3"}
+        return {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "message": "No file in S3"}
     except Exception as e:
-        return {"ticker": ticker, "rise_pct": None,"fall_pct": None,"f1_score": None, "error": str(e)}
+        return {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "error": str(e)}
 
 # @app.get("/")
 # def root():
@@ -102,6 +104,7 @@ def _metrics_payload_for(ticker: str):
 # @app.get("/prediction/{ticker}", response_model=list[schemas.PredictionResponse])
 # def read_prediction(ticker: str, db_session: Session = Depends(get_db)):
 #     return crud.get_prediction_by_ticker(db_session, ticker)
+
 
 @app.get("/predict/{ticker}")
 def get_prediction(ticker: str):
