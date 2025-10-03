@@ -111,7 +111,7 @@ def get_prediction(ticker: str):
     return _prediction_payload_for(ticker)
 
 
-@app.get("/all_predictions")
+@app.get("/predict_all")
 def get_all_predictions():
     tickers = list(TICKERS.keys())
 
@@ -132,7 +132,7 @@ def get_metrics(ticker: str):
     return _metrics_payload_for(ticker)
 
 
-@app.get("/all_metrics")
+@app.get("/metrics_all")
 def get_all_metrics():
     tickers = list(TICKERS.keys())
 
