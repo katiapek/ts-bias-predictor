@@ -129,7 +129,8 @@ def _metrics_payload_for(ticker: str):
 
 
 @app.get("/predict/{ticker}")
-def get_prediction(ticker: str):
+def get_prediction(ticker: str, x_api_key: str = Header(None)):
+    verify_api_key(x_api_key)
     return _prediction_payload_for(ticker)
 
 
@@ -151,7 +152,8 @@ def get_all_predictions(x_api_key: str = Header(None)):
 
 
 @app.get("/metrics/{ticker}")
-def get_metrics(ticker: str):
+def get_metrics(ticker: str, x_api_key: str = Header(None)):
+    verify_api_key(x_api_key)
     return _metrics_payload_for(ticker)
 
 
