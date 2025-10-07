@@ -99,7 +99,7 @@ def _prediction_payload_for(ticker: str):
 
 
 def _metrics_payload_for(ticker: str):
-    key = f"metrics/{ticker.replace('=, ')}_data.csv"
+    key = f"metrics/{ticker.replace('=', '')}_data.csv"
 
     try:
         # Fetch object from S3
