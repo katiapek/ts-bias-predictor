@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Header, HTTPException  # , Depends
+from fastapi import FastAPI, Header, HTTPException
 import boto3
 import csv
+from datetime import datetime, timedelta
 
 API_KEY = "itssecret123"
 
@@ -10,21 +11,47 @@ app = FastAPI(title="ClockTrades Bias Predictor")
 BUCKET_NAME = "xlstm"
 s3 = boto3.client("s3")  # uses credentials from aws configure
 
-TICKERS = {"NQ=F": "NQ 100",
-           "ES=F": "S&P 500",
-           "6E=F": "EUR/USD",
-           "6J=F": "JPY/USD",
-           "CL=F": "CRUDE OIL",
-           "GC=F": "GOLD",
-           "BTC-USD": "BITCOIN"
-           }
+TICKERS = {
+    "NQ=F": "NQ 100",
+    "ES=F": "S&P 500",
+    "6E=F": "EUR/USD",
+    "6J=F": "JPY/USD",
+    "CL=F": "CRUDE OIL",
+    "GC=F": "GOLD",
+    "BTC-USD": "BITCOIN"
+}
+
+# In-memory cache
+cache_predictions = {}
+cache_metrics = {}
+CACHE_TTL = timedelta(minutes=10)
+
 
 def verify_api_key(x_api_key: str = Header(None)):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _get_cached(cache_dict, ticker):
+    """Check cache and return data if not expired"""
+    entry = cache_dict.get(ticker)
+    if entry:
+        data, timestamp = entry
+        if datetime.utcnow() - timestamp < CACHE_TTL:
+            return data
+    return None
+
+
+def _set_cache(cache_dict, ticker, data):
+    cache_dict[ticker] = (data, datetime.utcnow())
+
+
 def _prediction_payload_for(ticker: str):
+    # Check cache first
+    cached = _get_cached(cache_predictions, ticker)
+    if cached:
+        return cached
+
     key = f"predictions/{ticker.replace('=', '')}_prediction.csv"
     try:
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
@@ -34,13 +61,13 @@ def _prediction_payload_for(ticker: str):
         name = TICKERS.get(ticker, ticker)
 
         if not rows:
-            return {"ticker": ticker, "name": name, "message": "No data"}
+            payload = {"ticker": ticker, "name": name, "message": "No data"}
+            _set_cache(cache_predictions, ticker, payload)
+            return payload
 
-        # Prepare arrays
         dates = [r.get("Date") for r in rows]
         preds = [r.get("Predicted Direction") for r in rows]
         closes = []
-
         for r in rows:
             c = r.get("Close")
             try:
@@ -48,84 +75,90 @@ def _prediction_payload_for(ticker: str):
             except ValueError:
                 closes.append(None)
 
-        # Actual direction for index i (current day) vs prevous day
-        def actual_dir(i:int):
-            if i == 0 or closes[i] is None or closes[i-1] is None:
+        def actual_dir(i: int):
+            if i == 0 or closes[i] is None or closes[i - 1] is None:
                 return None
-            if closes[i]>closes[i-1]:
+            if closes[i] > closes[i - 1]:
                 return "Up"
-            if closes[i]<closes[i-1]:
+            if closes[i] < closes[i - 1]:
                 return "Down"
             return "Flat"
-
-        # Evaluate correctness for the five dates preceding the last date
 
         n = len(rows)
         payload = {
             "ticker": ticker,
             "name": name,
-            # prediction recorded on the latest day - for the next trading day
-            "tomorrows_prediction": preds[-1] if n>=1 else None,
+            "tomorrows_prediction": preds[-1] if n >= 1 else None,
         }
 
-        # Build date_i, close_i, pred_i, correct_prediction_i for i = 0..5
         max_items = 6
         for i in range(max_items):
-            j = n - 1 - i  # row index of the date being reported (0 = latest)
+            j = n - 1 - i
             if j < 0:
                 break
-
-                # Prediction that applied to date j is the one recorded on the prior date (j-1)
             pred_for_j = preds[j - 1] if j - 1 >= 0 else None
             act = actual_dir(j)
-            correct = None
-            if act in ("Up", "Down") and pred_for_j in ("Up", "Down"):
-                correct = (act == pred_for_j)
+            correct = (act == pred_for_j) if act in ("Up", "Down") and pred_for_j in ("Up", "Down") else None
 
             payload[f"date_{i}"] = dates[j]
             payload[f"close_{i}"] = closes[j]
             payload[f"pred_{i}"] = pred_for_j
-            payload[f"correct_prediction_{i}"] = True if correct is True else False if correct is False else None
+            payload[f"correct_prediction_{i}"] = True if correct else False if correct is False else None
 
         if n < max_items:
             payload["message"] = f"Only {n} row(s) available; computed up to {min(max_items, n)} date(s)."
 
+        # Cache result
+        _set_cache(cache_predictions, ticker, payload)
         return payload
 
     except s3.exceptions.NoSuchKey:
-        return {"ticker": ticker, "name": TICKERS.get(ticker, ticker), "message": "No file in S3"}
+        payload = {"ticker": ticker, "name": name, "message": "No file in S3"}
+        _set_cache(cache_predictions, ticker, payload)
+        return payload
     except Exception as e:
-        return {"ticker": ticker, "name": TICKERS.get(ticker, ticker), "error": str(e)}
+        payload = {"ticker": ticker, "name": name, "error": str(e)}
+        _set_cache(cache_predictions, ticker, payload)
+        return payload
 
 
 def _metrics_payload_for(ticker: str):
-    key = f"metrics/{ticker.replace('=', '')}_data.csv"
+    # Check cache first
+    cached = _get_cached(cache_metrics, ticker)
+    if cached:
+        return cached
 
+    key = f"metrics/{ticker.replace('=', '')}_data.csv"
     try:
-        # Fetch object from S3
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
         content = obj["Body"].read().decode("utf-8")
-
-        # Parse CSV
         rows = list(csv.DictReader(content.splitlines()))
-        if not rows:
-            return {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "message": "No data"}
-
-        latest = rows[-1]  # last row = latest prediction
         name = TICKERS.get(ticker, ticker)
 
-        return {
+        if not rows:
+            payload = {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "message": "No data"}
+            _set_cache(cache_metrics, ticker, payload)
+            return payload
+
+        latest = rows[-1]
+        payload = {
             "ticker": ticker,
             "name": name,
             "rise_pct": latest["Precision (Rise)"],
             "fall_pct": latest["Precision (Fall)"],
             "f1_score": latest["F1 Score"],
         }
+        _set_cache(cache_metrics, ticker, payload)
+        return payload
 
     except s3.exceptions.NoSuchKey:
-        return {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "message": "No file in S3"}
+        payload = {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "message": "No file in S3"}
+        _set_cache(cache_metrics, ticker, payload)
+        return payload
     except Exception as e:
-        return {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "error": str(e)}
+        payload = {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "error": str(e)}
+        _set_cache(cache_metrics, ticker, payload)
+        return payload
 
 
 @app.get("/predict/{ticker}")
@@ -137,18 +170,7 @@ def get_prediction(ticker: str, x_api_key: str = Header(None)):
 @app.get("/predict_all")
 def get_all_predictions(x_api_key: str = Header(None)):
     verify_api_key(x_api_key)
-    tickers = list(TICKERS.keys())
-
-    # sequential - simple
-    return {"results": [_prediction_payload_for(t) for t in tickers]}
-
-    # concurrent version (faster for network I/O)
-    # results = []
-    # with ThreadPoolExecutor(max_workers=min(8, len(tickers))) as pool:
-    #   futures = [pool.submit(_prediction_payload_for, t) for t in tickers]
-    #   for f in futures:
-    #       results.append(f.result())
-    # return {"results": results}
+    return {"results": [_prediction_payload_for(t) for t in TICKERS.keys()]}
 
 
 @app.get("/metrics/{ticker}")
@@ -160,6 +182,4 @@ def get_metrics(ticker: str, x_api_key: str = Header(None)):
 @app.get("/metrics_all")
 def get_all_metrics(x_api_key: str = Header(None)):
     verify_api_key(x_api_key)
-    tickers = list(TICKERS.keys())
-
-    return {"results": [_metrics_payload_for(t) for t in tickers]}
+    return {"results": [_metrics_payload_for(t) for t in TICKERS.keys()]}
