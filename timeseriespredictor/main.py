@@ -1,6 +1,8 @@
-from fastapi import FastAPI  # , Depends
+from fastapi import FastAPI, Header, HTTPException  # , Depends
 import boto3
 import csv
+
+API_KEY = "itssecret123"
 
 app = FastAPI(title="ClockTrades Bias Predictor")
 
@@ -16,6 +18,10 @@ TICKERS = {"NQ=F": "NQ 100",
            "GC=F": "GOLD",
            "BTC-USD": "BITCOIN"
            }
+
+def verify_api_key(x_api_key: str = Header(None)):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def _prediction_payload_for(ticker: str):
@@ -128,7 +134,8 @@ def get_prediction(ticker: str):
 
 
 @app.get("/predict_all")
-def get_all_predictions():
+def get_all_predictions(x_api_key: str = Header(None)):
+    verify_api_key(x_api_key)
     tickers = list(TICKERS.keys())
 
     # sequential - simple
@@ -149,7 +156,8 @@ def get_metrics(ticker: str):
 
 
 @app.get("/metrics_all")
-def get_all_metrics():
+def get_all_metrics(x_api_key: str = Header(None)):
+    verify_api_key(x_api_key)
     tickers = list(TICKERS.keys())
 
     return {"results": [_metrics_payload_for(t) for t in tickers]}
