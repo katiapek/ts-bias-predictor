@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import boto3
 import csv
 from datetime import datetime, timedelta
@@ -11,6 +12,17 @@ s3 = boto3.client("s3")  # uses credentials from aws configure
 # Get secrets from env vars
 API_KEY = os.getenv("API_KEY")
 BUCKET_NAME = os.getenv("BUCKET_NAME")
+# CORS setup - allow your front-end domain only
+# For testing: allow_origins=["*"]
+# For production: replace "*" with your actual front-end URL, e.g., "https://myapp.com"
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # <-- update this for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 TICKERS = {
     "NQ=F": "NQ 100",
