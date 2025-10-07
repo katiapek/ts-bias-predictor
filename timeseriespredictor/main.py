@@ -2,14 +2,15 @@ from fastapi import FastAPI, Header, HTTPException
 import boto3
 import csv
 from datetime import datetime, timedelta
-
-API_KEY = "itssecret123"
+import os
 
 app = FastAPI(title="ClockTrades Bias Predictor")
 
 # Config
-BUCKET_NAME = "xlstm"
 s3 = boto3.client("s3")  # uses credentials from aws configure
+# Get secrets from env vars
+API_KEY = os.getenv("API_KEY")
+BUCKET_NAME = os.getenv("BUCKET_NAME")
 
 TICKERS = {
     "NQ=F": "NQ 100",
