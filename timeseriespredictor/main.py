@@ -185,8 +185,9 @@ def _metrics_payload_for(ticker: str):
 
 
 @app.get("/")
-def get_root(ticker: str, x_api_key: str = Header(None)):
+def get_root():
     return {"status": "ok"}
+
 
 @app.get("/predict/{ticker}")
 def get_prediction(ticker: str, x_api_key: str = Header(None)):
