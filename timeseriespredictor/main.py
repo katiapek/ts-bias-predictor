@@ -7,6 +7,7 @@ import os
 from pydantic import BaseModel, EmailStr, constr
 from botocore.exceptions import ClientError
 import html
+import email_validator
 
 app = FastAPI(title="ClockTrades Bias Predictor")
 
