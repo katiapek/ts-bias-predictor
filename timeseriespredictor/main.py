@@ -4,16 +4,23 @@ import boto3
 import csv
 from datetime import datetime, timedelta
 import os
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, constr
+from botocore.exceptions import ClientError
+import html
 
 app = FastAPI(title="ClockTrades Bias Predictor")
 
 # Config
 s3 = boto3.client("s3")  # uses credentials from aws configure
-ses = boto3.client("ses", region_name="us-east-1")
 # Get secrets from env vars
 API_KEY = os.getenv("API_KEY")
 BUCKET_NAME = os.getenv("BUCKET_NAME")
+# --- AWS SES Config ---
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+FEEDBACK_TO_EMAIL = os.getenv("FEEDBACK_TO_EMAIL", "kamil@clocktrades.com")
+SES_SENDER_EMAIL = os.getenv("SES_SENDER_EMAIL", FEEDBACK_TO_EMAIL)  # must be verified in SES
+ses = boto3.client("ses", region_name=AWS_REGION)
+
 # CORS setup - allow your front-end domain only
 # For testing: allow_origins=["*"]
 # For production: replace "*" with your actual front-end URL, e.g., "https://myapp.com"
@@ -25,10 +32,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class FeedbackRequest(BaseModel):
-    email: EmailStr
-    subject: str
-    message: str
 
 TICKERS = {
     "NQ=F": "NQ 100",
@@ -203,19 +206,60 @@ def get_all_metrics(x_api_key: str = Header(None)):
     verify_api_key(x_api_key)
     return {"results": [_metrics_payload_for(t) for t in TICKERS.keys()]}
 
-@app.post("/feedback")
-def send_feedback(feedback: FeedbackRequest, x_api_key: str = Header(None)):
-    verify_api_key(x_api_key)
-    ses.send_email(
-        Source="kamil@clocktrades.com",
-        Destination={"ToAddresses": ["kamil@clocktrades.com"]},
-        Message={
-            "Subject": {"Data": f"BiasPredictor Feedback: {feedback.subject}"},
-            "Body": {
-                "Text": {
-                    "Data": f"From: {feedback.email}\n\n{feedback.message}"
-                }
-            },
-        },
+
+# --- Pydantic model for feedback ---
+class FeedbackRequest(BaseModel):
+    email: EmailStr
+    subject: constr(min_length=1, max_length=200)
+    message: constr(min_length=1, max_length=5000)
+
+
+# --- Feedback endpoint ---
+@app.post("/feedback", status_code=200)
+def submit_feedback(payload: FeedbackRequest):
+    """Handles customer feedback and sends via AWS SES."""
+
+    subject = f"[ClockTrades Feedback] {payload.subject}"
+
+    # Sanitize user input to avoid injection in HTML
+    safe_message = html.escape(payload.message)
+
+    body_text = (
+        f"Feedback submitted at {datetime.utcnow().isoformat()}Z\n\n"
+        f"From: {payload.email}\n\n"
+        f"Message:\n{payload.message}\n"
     )
-    return {"status": "success"}
+
+    body_html = f"""
+    <html>
+      <body>
+        <h3>Feedback submitted at {datetime.utcnow().isoformat()}Z</h3>
+        <p><b>From:</b> {html.escape(payload.email)}</p>
+        <p><b>Message:</b><br>{safe_message.replace(chr(10), '<br>')}</p>
+      </body>
+    </html>
+    """
+
+    try:
+        ses.send_email(
+            Source=SES_SENDER_EMAIL,
+            Destination={"ToAddresses": [FEEDBACK_TO_EMAIL]},
+            Message={
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {
+                    "Text": {"Data": body_text, "Charset": "UTF-8"},
+                    "Html": {"Data": body_html, "Charset": "UTF-8"},
+                },
+            },
+            ReplyToAddresses=[payload.email],
+        )
+        return {"status": "ok"}
+
+    except ClientError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"SES error: {e.response['Error']['Message']}"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal error while sending feedback.")
+
