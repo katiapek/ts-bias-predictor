@@ -4,11 +4,13 @@ import boto3
 import csv
 from datetime import datetime, timedelta
 import os
+from pydantic import BaseModel, EmailStr
 
 app = FastAPI(title="ClockTrades Bias Predictor")
 
 # Config
 s3 = boto3.client("s3")  # uses credentials from aws configure
+ses = boto3.client("ses", region_name="us-east-1")
 # Get secrets from env vars
 API_KEY = os.getenv("API_KEY")
 BUCKET_NAME = os.getenv("BUCKET_NAME")
@@ -23,6 +25,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class FeedbackRequest(BaseModel):
+    email: EmailStr
+    subject: str
+    message: str
 
 TICKERS = {
     "NQ=F": "NQ 100",
