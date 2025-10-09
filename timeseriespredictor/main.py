@@ -202,3 +202,20 @@ def get_metrics(ticker: str, x_api_key: str = Header(None)):
 def get_all_metrics(x_api_key: str = Header(None)):
     verify_api_key(x_api_key)
     return {"results": [_metrics_payload_for(t) for t in TICKERS.keys()]}
+
+@app.post("/feedback")
+def send_feedback(feedback: FeedbackRequest, x_api_key: str = Header(None)):
+    verify_api_key(x_api_key)
+    ses.send_email(
+        Source="kamil@clocktrades.com",
+        Destination={"ToAddresses": ["kamil@clocktrades.com"]},
+        Message={
+            "Subject": {"Data": f"BiasPredictor Feedback: {feedback.subject}"},
+            "Body": {
+                "Text": {
+                    "Data": f"From: {feedback.email}\n\n{feedback.message}"
+                }
+            },
+        },
+    )
+    return {"status": "success"}
