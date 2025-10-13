@@ -69,13 +69,13 @@ def _set_cache(cache_dict, ticker, data):
     cache_dict[ticker] = (data, datetime.utcnow())
 
 
-def _prediction_payload_for(ticker: str):
+def _prediction_payload_for(ticker: str, freq: str):
     # Check cache first
     cached = _get_cached(cache_predictions, ticker)
     if cached:
         return cached
 
-    key = f"predictions/{ticker.replace('=', '')}_prediction.csv"
+    key = f"predictions/{ticker.replace('=', '')}_{freq}_prediction.csv"
     try:
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
         content = obj["Body"].read().decode("utf-8")
@@ -145,13 +145,13 @@ def _prediction_payload_for(ticker: str):
         return payload
 
 
-def _metrics_payload_for(ticker: str):
+def _metrics_payload_for(ticker: str, freq: str):
     # Check cache first
     cached = _get_cached(cache_metrics, ticker)
     if cached:
         return cached
 
-    key = f"metrics/{ticker.replace('=', '')}_data.csv"
+    key = f"metrics/{ticker.replace('=', '')}_{freq}_data.csv"
     try:
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
         content = obj["Body"].read().decode("utf-8")
@@ -189,28 +189,28 @@ def get_root():
     return {"status": "ok"}
 
 
-@app.get("/predict/{ticker}")
-def get_prediction(ticker: str, x_api_key: str = Header(None)):
+@app.get("/predict/{ticker}/{freq}")
+def get_prediction(ticker: str, freq: str, x_api_key: str = Header(None)):
     verify_api_key(x_api_key)
-    return _prediction_payload_for(ticker)
+    return _prediction_payload_for(ticker, freq)
 
 
-@app.get("/predict_all")
-def get_all_predictions(x_api_key: str = Header(None)):
+@app.get("/predict_all/{freq}")
+def get_all_predictions(freq: str, x_api_key: str = Header(None)):
     verify_api_key(x_api_key)
-    return {"results": [_prediction_payload_for(t) for t in TICKERS.keys()]}
+    return {"results": [_prediction_payload_for(t, freq) for t in TICKERS.keys()]}
 
 
-@app.get("/metrics/{ticker}")
-def get_metrics(ticker: str, x_api_key: str = Header(None)):
+@app.get("/metrics/{ticker}/{freq}")
+def get_metrics(ticker: str, freq: str, x_api_key: str = Header(None)):
     verify_api_key(x_api_key)
-    return _metrics_payload_for(ticker)
+    return _metrics_payload_for(ticker, freq)
 
 
-@app.get("/metrics_all")
-def get_all_metrics(x_api_key: str = Header(None)):
+@app.get("/metrics_all/{freq}")
+def get_all_metrics(freq: str, x_api_key: str = Header(None)):
     verify_api_key(x_api_key)
-    return {"results": [_metrics_payload_for(t) for t in TICKERS.keys()]}
+    return {"results": [_metrics_payload_for(t, freq) for t in TICKERS.keys()]}
 
 
 # --- Pydantic model for feedback ---
