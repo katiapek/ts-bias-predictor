@@ -55,9 +55,9 @@ def verify_api_key(x_api_key: str = Header(None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-def _get_cached(cache_dict, ticker):
+def _get_cached(cache_dict, key):
     """Check cache and return data if not expired"""
-    entry = cache_dict.get(ticker)
+    entry = cache_dict.get(key)
     if entry:
         data, timestamp = entry
         if datetime.utcnow() - timestamp < CACHE_TTL:
@@ -65,27 +65,28 @@ def _get_cached(cache_dict, ticker):
     return None
 
 
-def _set_cache(cache_dict, ticker, data):
-    cache_dict[ticker] = (data, datetime.utcnow())
+def _set_cache(cache_dict, key, data):
+    cache_dict[key] = (data, datetime.utcnow())
 
 
 def _prediction_payload_for(ticker: str, freq: str):
     # Check cache first
-    cached = _get_cached(cache_predictions, ticker)
+    cache_key = (ticker, freq)
+    cached = _get_cached(cache_predictions, cache_key)
     if cached:
         return cached
 
+    name = TICKERS.get(ticker, ticker)
     key = f"predictions/{ticker.replace('=', '')}_{freq}_prediction.csv"
+
     try:
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
         content = obj["Body"].read().decode("utf-8")
         rows = list(csv.DictReader(content.splitlines()))
 
-        name = TICKERS.get(ticker, ticker)
-
         if not rows:
             payload = {"ticker": ticker, "name": name, "message": "No data"}
-            _set_cache(cache_predictions, ticker, payload)
+            _set_cache(cache_predictions, cache_key, payload)
             return payload
 
         dates = [r.get("Date") for r in rows]
@@ -132,35 +133,52 @@ def _prediction_payload_for(ticker: str, freq: str):
             payload["message"] = f"Only {n} row(s) available; computed up to {min(max_items, n)} date(s)."
 
         # Cache result
-        _set_cache(cache_predictions, ticker, payload)
+        _set_cache(cache_predictions, cache_key, payload)
         return payload
 
-    except s3.exceptions.NoSuchKey:
-        payload = {"ticker": ticker, "name": name, "message": "No file in S3"}
-        _set_cache(cache_predictions, ticker, payload)
-        return payload
-    except Exception as e:
+    except ClientError as e:
+
+        code = e.response.get("Error", {}).get("Code")
+
+        if code == "NoSuchKey":
+            payload = {"ticker": ticker, "name": name, "message": "No file in S3"}
+
+            _set_cache(cache_predictions, cache_key, payload)
+
+            return payload
+
         payload = {"ticker": ticker, "name": name, "error": str(e)}
-        _set_cache(cache_predictions, ticker, payload)
+
+        _set_cache(cache_predictions, cache_key, payload)
+
+        return payload
+
+    except Exception as e:
+
+        payload = {"ticker": ticker, "name": name, "error": str(e)}
+
+        _set_cache(cache_predictions, cache_key, payload)
+
         return payload
 
 
 def _metrics_payload_for(ticker: str, freq: str):
     # Check cache first
-    cached = _get_cached(cache_metrics, ticker)
+    cache_key = (ticker, freq)
+    cached = _get_cached(cache_metrics, cache_key)
     if cached:
         return cached
-
+    name = TICKERS.get(ticker, ticker)
     key = f"metrics/{ticker.replace('=', '')}_{freq}_data.csv"
+
     try:
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
         content = obj["Body"].read().decode("utf-8")
         rows = list(csv.DictReader(content.splitlines()))
-        name = TICKERS.get(ticker, ticker)
 
         if not rows:
             payload = {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "message": "No data"}
-            _set_cache(cache_metrics, ticker, payload)
+            _set_cache(cache_metrics, cache_key, payload)
             return payload
 
         latest = rows[-1]
@@ -171,16 +189,32 @@ def _metrics_payload_for(ticker: str, freq: str):
             "fall_pct": latest["Precision (Fall)"],
             "f1_score": latest["F1 Score"],
         }
-        _set_cache(cache_metrics, ticker, payload)
+        _set_cache(cache_metrics, cache_key, payload)
         return payload
 
-    except s3.exceptions.NoSuchKey:
-        payload = {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "message": "No file in S3"}
-        _set_cache(cache_metrics, ticker, payload)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code")
+
+        if code == "NoSuchKey":
+            payload = {"ticker": ticker, "name": name, "rise_pct": None, "fall_pct": None, "f1_score": None,
+                       "message": "No file in S3"}
+
+            _set_cache(cache_metrics, cache_key, payload)
+
+            return payload
+
+        payload = {"ticker": ticker, "name": name, "rise_pct": None, "fall_pct": None, "f1_score": None,
+                   "error": str(e)}
+
+        _set_cache(cache_metrics, cache_key, payload)
+
         return payload
+
     except Exception as e:
-        payload = {"ticker": ticker, "rise_pct": None, "fall_pct": None, "f1_score": None, "error": str(e)}
-        _set_cache(cache_metrics, ticker, payload)
+
+        payload = {"ticker": ticker, "name": name, "rise_pct": None, "fall_pct": None, "f1_score": None,
+                   "error": str(e)}
+        _set_cache(cache_metrics, cache_key, payload)
         return payload
 
 
