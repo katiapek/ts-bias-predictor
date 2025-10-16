@@ -225,7 +225,7 @@ def _metrics_payload_for(ticker: str, freq: str):
 
 @app.get("/", include_in_schema=False)
 def read_root():
-    return FileResponse(os.path.join("timeseriespredictor/static/landing", "index.html"))
+    return FileResponse(os.path.join("app/static/landing", "index.html"))
 
 
 @app.get("/predict/{ticker}/{freq}")
