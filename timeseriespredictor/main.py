@@ -8,8 +8,13 @@ from pydantic import BaseModel, EmailStr, constr
 from botocore.exceptions import ClientError
 import html
 import email_validator
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 app = FastAPI(title="ClockTrades Bias Predictor")
+
+# Serve the landing page
+app.mount("/landing", StaticFiles(directory="app/static/landing", html=True), name="landing")
 
 # Config
 s3 = boto3.client("s3")  # uses credentials from aws configure
@@ -218,9 +223,9 @@ def _metrics_payload_for(ticker: str, freq: str):
         return payload
 
 
-@app.get("/")
-def get_root():
-    return {"status": "ok"}
+@app.get("/", include_in_schema=False)
+def read_root():
+    return FileResponse(os.path.join("timeseriespredictor/static/landing", "index.html"))
 
 
 @app.get("/predict/{ticker}/{freq}")
@@ -303,3 +308,5 @@ def submit_feedback(payload: FeedbackRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal error while sending feedback.")
 
+# from timeseriespredictor.auth.routes import router as auth_router
+# app.include_router(auth_router)
