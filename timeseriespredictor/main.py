@@ -9,8 +9,10 @@ from botocore.exceptions import ClientError
 import html
 import email_validator
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse, FileResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, FileResponse, HTMLResponse, JSONResponse
 from pathlib import Path
+import httpx
+
 
 app = FastAPI(title="ClockTrades Bias Predictor")
 
@@ -27,6 +29,9 @@ s3 = boto3.client("s3")  # uses credentials from aws configure
 # Get secrets from env vars
 API_KEY = os.getenv("API_KEY")
 BUCKET_NAME = os.getenv("BUCKET_NAME")
+BEEHIIV_API_KEY = os.getenv("BEEHIIV_API_KEY")
+PUBLICATION_ID = os.getenv("BEEHIIV_PUBLICATION_ID")
+TOTAL_SPOTS = 200
 # --- AWS SES Config ---
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 FEEDBACK_TO_EMAIL = os.getenv("FEEDBACK_TO_EMAIL", "kamil@clocktrades.com")
@@ -318,5 +323,23 @@ def submit_feedback(payload: FeedbackRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal error while sending feedback.")
 
-# from timeseriespredictor.auth.routes import router as auth_router
-# app.include_router(auth_router)
+@app.get("/spots-left", include_in_schema=False)
+async def spots_left():
+    """Return number of remaining subscription spots"""
+    headers = {"Authorization": f"Bearer {BEEHIIV_API_KEY}"}
+    url = f"https://api.beehiiv.com/v2/publications/{PUBLICATION_ID}/subscriptions"
+
+    total = 0
+    params = {"limit": 100, "status": "valid"}  # use 'active' or 'valid' as needed
+    async with httpx.AsyncClient() as client:
+        while True:
+            r = await client.get(url, headers=headers, params=params)
+            r.raise_for_status()
+            data = r.json()
+            total += len(data.get("data", []))
+            if not data.get("has_more"):
+                break
+            params["cursor"] = data["next_cursor"]
+
+    remaining = max(TOTAL_SPOTS - total, 0)
+    return JSONResponse(content={"spots_left": remaining})
