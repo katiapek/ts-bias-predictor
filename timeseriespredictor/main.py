@@ -9,7 +9,7 @@ from botocore.exceptions import ClientError
 import html
 import email_validator
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse, HTMLResponse
 from pathlib import Path
 
 app = FastAPI(title="ClockTrades Bias Predictor")
@@ -231,7 +231,9 @@ def _metrics_payload_for(ticker: str, freq: str):
 # Redirect root path to /landing/
 @app.get("/", include_in_schema=False)
 def read_root():
-    return RedirectResponse(url="/landing/")
+    index_file = LANDING_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
 
 
 @app.get("/predict/{ticker}/{freq}")
