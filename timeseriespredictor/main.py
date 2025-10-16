@@ -20,6 +20,7 @@ LANDING_DIR = BASE_DIR / "static" / "landing"
 
 # Mount static files (HTML, JS, CSS)
 app.mount("/landing", StaticFiles(directory=str(LANDING_DIR), html=True), name="landing")
+app.mount("/assets", StaticFiles(directory=str(LANDING_DIR / "assets")), name="assets")
 
 # Config
 s3 = boto3.client("s3")  # uses credentials from aws configure
