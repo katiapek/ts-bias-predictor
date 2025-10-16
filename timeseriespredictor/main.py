@@ -350,7 +350,7 @@ async def spots_left():
             total += len(data.get("data", []))
             if not data.get("has_more"):
                 break
-            params["cursor"] = data["next_cursor"]
+            params["cursor"] = data.get("next_cursor")
 
     remaining = max(TOTAL_SPOTS - total, 0)
-    return JSONResponse(content={"spots_left": remaining})
+    return {"spots_left": remaining}
