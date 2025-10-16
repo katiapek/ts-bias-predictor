@@ -330,7 +330,7 @@ async def spots_left():
     url = f"https://api.beehiiv.com/v2/publications/{PUBLICATION_ID}/subscriptions"
 
     total = 0
-    params = {"limit": 100, "status": "valid"}  # use 'active' or 'valid' as needed
+    params = {"limit": 100, "statusText": "valid"}  # use 'active' or 'valid' as needed
     async with httpx.AsyncClient() as client:
         while True:
             r = await client.get(url, headers=headers, params=params)
