@@ -234,6 +234,7 @@ def read_root():
     index_file = LANDING_DIR / "index.html"
     if index_file.exists():
         return FileResponse(str(index_file))
+    return HTMLResponse("Bias Predictor", status_code=200)
 
 
 @app.get("/predict/{ticker}/{freq}")
