@@ -9,12 +9,17 @@ from botocore.exceptions import ClientError
 import html
 import email_validator
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import RedirectResponse
+from pathlib import Path
 
 app = FastAPI(title="ClockTrades Bias Predictor")
 
-# Serve the landing page
-app.mount("/landing", StaticFiles(directory="app/static/landing", html=True), name="landing")
+# Dynamically find the static directory relative to this file
+BASE_DIR = Path(__file__).resolve().parent
+LANDING_DIR = BASE_DIR / "static" / "landing"
+
+# Mount static files (HTML, JS, CSS)
+app.mount("/landing", StaticFiles(directory=str(LANDING_DIR), html=True), name="landing")
 
 # Config
 s3 = boto3.client("s3")  # uses credentials from aws configure
@@ -223,9 +228,10 @@ def _metrics_payload_for(ticker: str, freq: str):
         return payload
 
 
+# Redirect root path to /landing/
 @app.get("/", include_in_schema=False)
 def read_root():
-    return FileResponse(os.path.join("app/static/landing", "index.html"))
+    return RedirectResponse(url="/landing/")
 
 
 @app.get("/predict/{ticker}/{freq}")
