@@ -323,18 +323,29 @@ def submit_feedback(payload: FeedbackRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal error while sending feedback.")
 
+
 @app.get("/spots-left", include_in_schema=False)
 async def spots_left():
     """Return number of remaining subscription spots"""
     headers = {"Authorization": f"Bearer {BEEHIIV_API_KEY}"}
+    if not BEEHIIV_API_KEY or not PUBLICATION_ID:
+        raise HTTPException(status_code=500, detail="Beehiiv API key or publication ID not configured")
     url = f"https://api.beehiiv.com/v2/publications/{PUBLICATION_ID}/subscriptions"
 
     total = 0
-    params = {"limit": 100, "statusText": "valid"}  # use 'active' or 'valid' as needed
-    async with httpx.AsyncClient() as client:
+    params = {"limit": 100}
+    async with httpx.AsyncClient(timeout=15) as client:
         while True:
-            r = await client.get(url, headers=headers, params=params)
-            r.raise_for_status()
+            try:
+                r = await client.get(url, headers=headers, params=params)
+                # If Beehiiv returns non-2xx, surface that to caller
+                r.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                body = e.response.text
+                raise HTTPException(status_code=e.response.status_code, detail=f"Beehiiv error: {body}")
+            except httpx.RequestError as e:
+                raise HTTPException(status_code=502, detail=f"Network error contacting Beehiiv: {str(e)}")
+
             data = r.json()
             total += len(data.get("data", []))
             if not data.get("has_more"):
