@@ -243,6 +243,14 @@ def read_root():
     return HTMLResponse("Bias Predictor", status_code=200)
 
 
+@app.get("/landing1", include_in_schema=False)
+def read_landing():
+    index_file = LANDING_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
+    return HTMLResponse("Bias Predictor", status_code=200)
+
+
 @app.get("/predict/{ticker}/{freq}")
 def get_prediction(ticker: str, freq: str, x_api_key: str = Header(None)):
     verify_api_key(x_api_key)
