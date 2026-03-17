@@ -110,6 +110,10 @@ docker run -p 8000:8000 --env-file .env bias-predictor
 | GET    | `/auth/google/callback`    | —       | Google OAuth callback              |
 | POST   | `/feedback`                | —       | Submit feedback (email, subject, message) |
 
+## Related
+
+- **Demo & screenshots:** [bias-predictor-demo](https://github.com/katiapek/bias-predictor-demo)
+
 ## License
 
 This project is provided for portfolio and educational purposes.
