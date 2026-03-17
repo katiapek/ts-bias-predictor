@@ -1,0 +1,20 @@
+.aider*
+.env
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
+
+# EB recreation notes
+recreation of eb env
+
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store

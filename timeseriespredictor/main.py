@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 
 
-app = FastAPI(title="ClockTrades Bias Predictor")
+app = FastAPI(title="Bias Predictor")
 
 # Dynamically find the static directory relative to this file
 BASE_DIR = Path(__file__).resolve().parent
@@ -33,8 +33,8 @@ BEEHIIV_API_KEY = os.getenv("BEEHIIV_API_KEY")
 PUBLICATION_ID = os.getenv("BEEHIIV_PUBLICATION_ID")
 TOTAL_SPOTS = 200
 # --- AWS SES Config ---
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-FEEDBACK_TO_EMAIL = os.getenv("FEEDBACK_TO_EMAIL", "kamil@clocktrades.com")
+AWS_REGION = os.getenv("AWS_REGION", "region-1")
+FEEDBACK_TO_EMAIL = os.getenv("FEEDBACK_TO_EMAIL", "email@email.com")
 SES_SENDER_EMAIL = os.getenv("SES_SENDER_EMAIL", FEEDBACK_TO_EMAIL)  # must be verified in SES
 ses = boto3.client("ses", region_name=AWS_REGION)
 
@@ -332,33 +332,3 @@ def submit_feedback(payload: FeedbackRequest):
         raise HTTPException(status_code=500, detail="Internal error while sending feedback.")
 
 
-# @app.get("/spots-left", include_in_schema=False)
-# async def spots_left():
-#     """Return number of remaining subscription spots"""
-#     headers = {"Authorization": f"Bearer {BEEHIIV_API_KEY}"}
-#     if not BEEHIIV_API_KEY or not PUBLICATION_ID:
-#         raise HTTPException(status_code=500, detail="Beehiiv API key or publication ID not configured")
-#     url = f"https://api.beehiiv.com/v2/publications/{PUBLICATION_ID}/subscriptions"
-#
-#     total = 0
-#     params = {"limit": 100}
-#     async with httpx.AsyncClient(timeout=15) as client:
-#         while True:
-#             try:
-#                 r = await client.get(url, headers=headers, params=params)
-#                 # If Beehiiv returns non-2xx, surface that to caller
-#                 r.raise_for_status()
-#             except httpx.HTTPStatusError as e:
-#                 body = e.response.text
-#                 raise HTTPException(status_code=e.response.status_code, detail=f"Beehiiv error: {body}")
-#             except httpx.RequestError as e:
-#                 raise HTTPException(status_code=502, detail=f"Network error contacting Beehiiv: {str(e)}")
-#
-#             data = r.json()
-#             total += len(data.get("data", []))
-#             if not data.get("has_more"):
-#                 break
-#             params["cursor"] = data.get("next_cursor")
-#
-#     remaining = max(TOTAL_SPOTS - total, 0)
-#     return {"spots_left": remaining}
